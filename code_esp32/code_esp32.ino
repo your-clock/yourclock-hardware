@@ -1,5 +1,6 @@
 #include <SimpleTimer.h>
-#include <WiFi.h> 
+#include <WiFi.h>
+#include <WiFiClient.h> 
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
@@ -10,7 +11,10 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <PubSubClient.h>
-#include <aREST.h>
+#include <ThingerESP32.h>
+#include <EEPROM.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
 #include "soc/timer_group_struct.h"
 #include "soc/timer_group_reg.h"
 
@@ -89,10 +93,13 @@ ST_wifi wifi=check;
 ST_buzzer buzzer=buzzer_check;
 ST_menu menu = menu_stb;
 
-const char ssid[]= "FAMILIA LONDONO";
-const char password[]= "12624025";
-char* device_id = "reloj1";
-char * key = "821famk4b2t1q2el";
+char ssid[50];
+char password[50];
+const char *ssidConf = "YOUR-CLOCK";
+const char *passConf = "yourclock0114";
+#define USERNAME "DavidG97"
+#define DEVICE_ID "ESP32CLOCK"
+#define DEVICE_CREDENTIAL "3SPE2CL0CK"
 const char *ntpServer = "horalegal.inm.gov.co";
 const long gmtOffset_sec = -18000;
 const int daylightOffset_sec = 0;
@@ -131,13 +138,35 @@ uint8_t degC[] = { 6, 3, 3, 56, 68, 68, 68 };   //caracter °c
 uint8_t alarm_yes[] = { 5, 0, 60, 20, 60, 0};  // caracter alarma on
 uint8_t alarm_no[] = { 5, 255, 195, 235, 195, 255};  // caracter alarma off
 
+String mensaje = "";
+
+//-----------CODIGO HTML PAGINA DE CONFIGURACION---------------
+String pagina = "<!DOCTYPE html>"
+"<html>"
+"<head>"
+"<title>Tutorial Eeprom</title>"
+"<meta charset='UTF-8'>"
+"</head>"
+"<body>"
+"</form>"
+"<form action='guardar_conf' method='get'>"
+"SSID:<br><br>"
+"<input class='input1' name='ssid' type='text'><br>"
+"PASSWORD:<br><br>"
+"<input class='input1' name='pass' type='password'><br><br>"
+"<input class='boton' type='submit' value='GUARDAR'/><br><br>"
+"</form>"
+"<a href='escanear'><button class='boton'>ESCANEAR</button></a><br><br>";
+
+String paginafin = "</body>"
+"</html>";
+
 TaskHandle_t Task1;
 TaskHandle_t Task2;
 TaskHandle_t Task3;
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-aREST rest = aREST(client);
+WebServer server(80);
+ThingerESP32 thing(USERNAME, DEVICE_ID, DEVICE_CREDENTIAL);
 SimpleTimer timer, timer2;
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 OneWire OneWireObject(SENSOR);
@@ -168,7 +197,11 @@ void process_boton2();
 void process_SendUbidotsTemperatura();
 void process_reconnect();
 int controlAlarma(String hora_alarma);
-void callback(char* topic, byte* payload, unsigned int length);
+void modoconf();
+String leer(int addr);
+void grabar(int addr, String a);
+void paginaconf();
+void escanear();
 
 
 
@@ -180,15 +213,20 @@ void setup() {
   pinMode(FULL_CHARGE, INPUT);
   pinMode(CHARGING, INPUT);
   pinMode(2, OUTPUT);
-  client.setCallback(callback);
-  rest.function("alarma",controlAlarma);
-  rest.set_id(device_id);
-  rest.set_name("esp32");
 
   P.begin();
   P.setIntensity(0);
   P.addChar('#', alarm_yes);
   P.addChar('!', alarm_no);
+  
+  EEPROM.begin(512);
+  if (digitalRead(B_1) == 1) {
+    modoconf();
+  }
+  
+  leer(0).toCharArray(ssid, 50);
+  leer(50).toCharArray(password, 50);
+
   sensorDS18B20.begin();
 
   timer.setInterval(1);
@@ -198,6 +236,14 @@ void setup() {
   ledcAttachPin(buzzer_pin,0);
 
   conectarWifi();
+
+  thing.add_wifi(ssid, password);
+  thing["temperatura"] >> outputValue(sensorDS18B20.getTempCByIndex(0));
+  thing["alarma"] << [](pson& in){
+    String alarma = in;
+    Serial.println(alarma);
+    controlAlarma(alarma);
+  };
 
   xTaskCreatePinnedToCore(loop1,"Task_1",5120,NULL,1,&Task1,0);
   xTaskCreatePinnedToCore(loop2,"Task_2",6144,NULL,1,&Task2,1);
@@ -220,11 +266,11 @@ void loop1(void *parameter){
     TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE;
     TIMERG0.wdt_feed = 1;
     TIMERG0.wdt_wprotect = 0;
-    
-    rest.handle(client);
+
+    thing.handle();
     process_requestHour();
     process_requestWeather();
-    //process_SendUbidotsTemperatura();
+    process_SendUbidotsTemperatura();
   }
   vTaskDelay(10);
 }
@@ -285,7 +331,6 @@ void conectarWifi(){
   Serial.println(WiFi.localIP());
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
 }
 
 void digitalClockDisplay() {
@@ -463,7 +508,7 @@ void process_printWeather(){
 }
 
 void process_boton1(){
-  int val=digitalRead(B_1);
+  int val = digitalRead(B_1);
   if(menu == menu_stb){
      switch(P1){
       case p_check:
@@ -514,67 +559,12 @@ void process_boton1(){
       break;
     }
   }else{
-    switch(P1){
-      case p_check:
-        if(val == 1){
-          timers[T_B1] = 2500;
-          P1 = p_push;
-          Serial.println("1 pulsado en modo");
-        }
-      break;
-      case p_time:
-        if(timers[T_B1] == 0){
-          P1 = p_check;
-          ledcWriteTone(0,0);
-        }
-      break;
-      case p_push:
-        if(timers[T_B1] >= 2400){
-          //antirrebote
-        }else if(timers[T_B1] < 2400 && timers[T_B1] > 0){
-          if(val == 1){
-            //do nothing
-          }else if(val == 0){
-            Serial.println("1 soltado en modo");
-            if(menu == menu_hora){
-              if(trigger_hora == true){          
-                h++;
-                if(h == 24){
-                  h=0;
-                }
-              }else{
-                m++;
-                if(m == 60){
-                  m=0;
-                }
-              }
-            }
-            timers[T_B1]=200;
-            P1=p_time;
-          }
-        }else if(timers[T_B1] == 0 ){
-          
-          if(trigger_hora == false){
-            trigger_hora = true;
-            menu = menu_stb;
-            hour = checking;
-            timers[T_B1] == 1500;
-            P1 = p_time;
-            ledcWriteTone(0,4000);
-          }else{
-            trigger_hora = false;
-            timers[T_B1] == 1500;
-            P1 = p_time;
-            ledcWriteTone(0,4000);
-          }
-        }
-      break;
-    }
+    ESP.restart();
   }
 }
 
 void process_boton2(){
-  int val2=digitalRead(B_2);
+  int val2 = digitalRead(B_2);
   switch(P2){
     case p_check:
       if(val2 == 1){
@@ -753,8 +743,89 @@ int controlAlarma(String hora_alarma){
   return 1;
 }
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void modoconf() {
 
-  rest.handle_callback(client, topic, payload, length);
+  WiFi.softAP(ssidConf, passConf);
+  IPAddress myIP = WiFi.softAPIP(); 
+  Serial.print("IP del access point: ");
+  Serial.println(myIP);
+  Serial.println("WebServer iniciado...");
+  
+  P.setTextAlignment(PA_CENTER);
+  P.write("Hola :)");
+  delay(1000);
+  P.displayText("http://your-clock.local", PA_CENTER, v, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+  P.displayAnimate();
+  delay(4000);
+  server.on("/", paginaconf); //esta es la pagina de configuracion
+  server.on("/guardar_conf", guardar_conf); //Graba en la eeprom la configuracion
+  server.on("/escanear", escanear); //Escanean las redes wifi disponibles
+  server.begin();
+  while (true) {
+    server.handleClient();
+  }
+}
 
+String leer(int addr) {
+   byte lectura;
+   String strlectura;
+   for (int i = addr; i < addr+50; i++) {
+      lectura = EEPROM.read(i);
+      if (lectura != 255) {
+        strlectura += (char)lectura;
+      }
+   }
+   return strlectura;
+}
+
+void grabar(int addr, String a) {
+  int tamano = a.length(); 
+  char inchar[50]; 
+  a.toCharArray(inchar, tamano+1);
+  for (int i = 0; i < tamano; i++) {
+    EEPROM.write(addr+i, inchar[i]);
+  }
+  for (int i = tamano; i < 50; i++) {
+    EEPROM.write(addr+i, 255);
+  }
+  EEPROM.commit();
+}
+
+void escanear() {  
+  int n = WiFi.scanNetworks(); //devuelve el número de redes encontradas
+  Serial.println("escaneo terminado");
+  if (n == 0) { //si no encuentra ninguna red
+    Serial.println("no se encontraron redes");
+    mensaje = "no se encontraron redes";
+  }  
+  else
+  {
+    Serial.print(n);
+    Serial.println(" redes encontradas");
+    mensaje = "";
+    for (int i = 0; i < n; ++i)
+    {
+      // agrega al STRING "mensaje" la información de las redes encontradas 
+      mensaje = (mensaje) + "<p>" + String(i + 1) + ": " + WiFi.SSID(i) + " (" + WiFi.RSSI(i) + ") Ch: " + WiFi.channel(i) + " Enc: " + WiFi.encryptionType(i) + " </p>\r\n";
+      //WiFi.encryptionType 5:WEP 2:WPA/PSK 4:WPA2/PSK 7:open network 8:WPA/WPA2/PSK
+      delay(10);
+    }
+    Serial.println(mensaje);
+    paginaconf();
+  }
+}
+
+void paginaconf() {
+  server.send(200, "text/html", pagina + mensaje + paginafin); 
+}
+
+void guardar_conf() {
+  
+  Serial.println(server.arg("ssid"));//Recibimos los valores que envia por GET el formulario web
+  grabar(0,server.arg("ssid"));
+  Serial.println(server.arg("pass"));
+  grabar(50,server.arg("pass"));
+
+  mensaje = "Configuracion Guardada...";
+  paginaconf();
 }
