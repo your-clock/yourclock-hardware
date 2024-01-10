@@ -18,8 +18,7 @@
 #include "soc/timer_group_struct.h"
 #include "soc/timer_group_reg.h"
 
-typedef enum
-{
+typedef enum {
 
   buzzer_on_alarm,
   buzzer_on_hour,
@@ -29,8 +28,7 @@ typedef enum
 
 } ST_buzzer;
 
-typedef enum
-{
+typedef enum {
 
   print_wheater = 0,
   print_hour,
@@ -41,8 +39,7 @@ typedef enum
 
 } ST_print;
 
-typedef enum
-{
+typedef enum {
 
   request,
   checking,
@@ -50,8 +47,7 @@ typedef enum
 
 } ST_request;
 
-typedef enum
-{
+typedef enum {
 
   p_push,
   p_check,
@@ -59,8 +55,7 @@ typedef enum
 
 } ST_boton;
 
-typedef enum
-{
+typedef enum {
 
   menu_stb,
   menu_hora,
@@ -68,8 +63,7 @@ typedef enum
 
 } ST_menu;
 
-typedef enum
-{
+typedef enum {
 
   conect,
   check_reconect,
@@ -78,8 +72,7 @@ typedef enum
 
 } ST_wifi;
 
-enum
-{
+enum {
 
   T_PrintHour = 0,
   T_PrintWeather,
@@ -109,7 +102,7 @@ const char *passConf = "yourclock0114";
 #define USERNAME "DavidG97"
 #define DEVICE_ID "ESP32CLOCK"
 #define DEVICE_CREDENTIAL "3SPE2CL0CK"
-const char *ntpServer = "horalegal.inm.gov.co";
+const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = -18000;
 const int daylightOffset_sec = 0;
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
@@ -141,9 +134,9 @@ volatile uint32_t timers[TIMERS];
 const char *w;
 const char *al;
 const char *hora_aux;
-uint8_t degC[] = {6, 3, 3, 56, 68, 68, 68};        //caracter °c
-uint8_t alarm_yes[] = {5, 0, 60, 20, 60, 0};       // caracter alarma on
-uint8_t alarm_no[] = {5, 255, 195, 235, 195, 255}; // caracter alarma off
+uint8_t degC[] = { 6, 3, 3, 56, 68, 68, 68 };         //caracter °c
+uint8_t alarm_yes[] = { 5, 0, 60, 20, 60, 0 };        // caracter alarma on
+uint8_t alarm_no[] = { 5, 255, 195, 235, 195, 255 };  // caracter alarma off
 
 String mensaje = "";
 
@@ -209,8 +202,7 @@ void grabar(int addr, String a);
 void paginaconf();
 void escanear();
 
-void setup()
-{
+void setup() {
 
   Serial.begin(115200);
   pinMode(B_1, INPUT);
@@ -227,8 +219,7 @@ void setup()
   matrixLed.write("Hola :D");
 
   EEPROM.begin(512);
-  if (digitalRead(B_1) == 1)
-  {
+  if (digitalRead(B_1) == 1 || digitalRead(B_2) == 1) {
     modoconf();
   }
 
@@ -247,8 +238,7 @@ void setup()
 
   thing.add_wifi(ssid, password);
   thing["temperatura"] >> outputValue(sensorDS18B20.getTempCByIndex(0));
-  thing["alarma"] << [](pson &in)
-  {
+  thing["alarma"] << [](pson &in) {
     String alarma = in;
     controlAlarma(alarma);
   };
@@ -258,21 +248,18 @@ void setup()
   xTaskCreatePinnedToCore(loop3, "Task_3", 5120, NULL, 1, &Task3, 0);
 }
 
-void loop()
-{
-  Tiempo_timer(); //timers
+void loop() {
+  Tiempo_timer();  //timers
 
-  digitalClockDisplay(); //conteo reloj interno
+  digitalClockDisplay();  //conteo reloj interno
   process_boton1();
   process_boton2();
   process_print();
   process_buzzer();
 }
 
-void loop1(void *parameter)
-{
-  for (;;)
-  {
+void loop1(void *parameter) {
+  for (;;) {
     TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE;
     TIMERG0.wdt_feed = 1;
     TIMERG0.wdt_wprotect = 0;
@@ -284,10 +271,8 @@ void loop1(void *parameter)
   vTaskDelay(10);
 }
 
-void loop2(void *parameter)
-{
-  for (;;)
-  {
+void loop2(void *parameter) {
+  for (;;) {
     TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE;
     TIMERG0.wdt_feed = 1;
     TIMERG0.wdt_wprotect = 0;
@@ -297,10 +282,8 @@ void loop2(void *parameter)
   vTaskDelay(10);
 }
 
-void loop3(void *parameter)
-{
-  for (;;)
-  {
+void loop3(void *parameter) {
+  for (;;) {
     TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE;
     TIMERG0.wdt_feed = 1;
     TIMERG0.wdt_wprotect = 0;
@@ -310,14 +293,10 @@ void loop3(void *parameter)
   vTaskDelay(10);
 }
 
-void Tiempo_timer()
-{
-  if (timer.isReady())
-  {
-    for (index_timer = 0; index_timer <= TIMERS; index_timer++)
-    {
-      if (timers[index_timer] != 0)
-      {
+void Tiempo_timer() {
+  if (timer.isReady()) {
+    for (index_timer = 0; index_timer <= TIMERS; index_timer++) {
+      if (timers[index_timer] != 0) {
         timers[index_timer]--;
       }
     }
@@ -325,50 +304,40 @@ void Tiempo_timer()
   }
 }
 
-void conectarWifi()
-{
+void conectarWifi() {
 
   WiFi.begin(ssid, password);
   Serial.print("Conecting to: ");
   Serial.println(ssid);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
 
     Serial.print(".");
     delay(1000);
     espera_wifi++;
-    if (espera_wifi == 60)
-    {
+    if (espera_wifi == 60) {
       break;
     }
   }
   Serial.println(F("WiFi connected"));
   Serial.print(F("IP address: "));
   Serial.println(WiFi.localIP());
-
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 }
 
-void digitalClockDisplay()
-{
-  if (menu == menu_stb)
-  {
-    if (timer2.isReady())
-    {
+void digitalClockDisplay() {
+  if (menu == menu_stb) {
+    if (timer2.isReady()) {
       s = s + 1;
-      if (s == 60)
-      {
+      if (s == 60) {
         m = m + 1;
         s = 0;
       }
-      if (m == 60)
-      {
+      if (m == 60) {
         h = h + 1;
         m = 0;
       }
-      if (h == 24)
-      {
+      if (h == 24) {
         h = 0;
       }
       timer2.reset();
@@ -376,476 +345,370 @@ void digitalClockDisplay()
   }
 }
 
-void process_requestHour()
-{
-  switch (hour)
-  {
-  case stb:
-    //do nothing
-    break;
-  case checking:
-    timers[T_RequestHour] = 300000;
-    hour = request;
-    break;
-  case request:
-    if (timers[T_RequestHour] == 0)
-    {
-      if (!getLocalTime(&timeinfo))
-      {
-        Serial.println("Error al sincronizar la hora");
-        return;
-      }
-      Serial.print("Hora sincronizada exitosamente: ");
-      Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-      h = timeinfo.tm_hour;
-      m = timeinfo.tm_min;
-      s = timeinfo.tm_sec;
-      mo = timeinfo.tm_mon;
-      hour = stb;
-    }
-    break;
-  }
-}
-
-void process_requestWeather()
-{
-  switch (weather)
-  {
-  case stb:
-    timers[T_RequestWeather] = 60000;
-    weather = request;
-    break;
-  case request:
-    if (timers[T_RequestWeather] == 0)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        HTTPClient http;
-        http.begin("http://api.openweathermap.org/data/2.5/weather?q=Bogota&units=metric&lang=es&appid=d212d43340e59e9c201119a4fdae37c6");
-        int httpCode = http.GET();
-        if (httpCode > 0)
-        {
-          String payloads = http.getString();
-          StaticJsonDocument<1000> doc;
-          deserializeJson(doc, payloads);
-          const char *clima = doc["weather"][0]["main"];
-          temperature = doc["main"]["temp"];
-          sensorDS18B20.requestTemperatures();
-          tem_amb_int = sensorDS18B20.getTempCByIndex(0);
-          sprintf(tem, " T:%d$ C:%s TA:%d$ ", temperature, clima, tem_amb_int);
-          w = tem;
-        }
-        http.end();
-      }
-      else if (WiFi.status() == WL_DISCONNECTED)
-      {
-        clime = print_error_wifi;
-      }
-      weather = stb;
-    }
-    break;
-  }
-}
-
-void process_print()
-{
-  switch (clime)
-  {
-  case print_hour:
-    if (matrixLed.displayAnimate())
-    {
-
-      if ((m == 0 && s == 0) && (h != 21 && h != 22 && h != 23 && h != 0 && h != 1 && h != 2 && h != 3 && h != 4 && h != 5 && h != 6) && flag_alarm == 0)
-      {
-        buzzer = buzzer_on_hour;
-      }
-      else if (flag_alarm == 0)
-      {
-        buzzer = buzzer_off;
-      }
-
-      if (h == h_alarm && m == m_alarm && s == 0 && flag_alarm == 0)
-      {
-        buzzer = buzzer_on_alarm;
-        flag_alarm = 1;
-      }
-
-      if (h < 10 && m < 10)
-      {
-        if (ind_alarma == 1)
-        {
-          sprintf(hora, "0%d:0%d!", h, m);
-        }
-        else if (ind_alarma == 0)
-        {
-          sprintf(hora, "0%d:0%d#", h, m);
-        }
-      }
-      else if (h > 9 && m > 9)
-      {
-        if (ind_alarma == 1)
-        {
-          sprintf(hora, "%d:%d!", h, m);
-        }
-        else if (ind_alarma == 0)
-        {
-          sprintf(hora, "%d:%d#", h, m);
-        }
-      }
-      else if (h < 10 && m > 9)
-      {
-        if (ind_alarma == 1)
-        {
-          sprintf(hora, "0%d:%d!", h, m);
-        }
-        else if (ind_alarma == 0)
-        {
-          sprintf(hora, "0%d:%d#", h, m);
-        }
-      }
-      else if (h > 9 && m < 10)
-      {
-        if (ind_alarma == 1)
-        {
-          sprintf(hora, "%d:0%d!", h, m);
-        }
-        else if (ind_alarma == 0)
-        {
-          sprintf(hora, "%d:0%d#", h, m);
-        }
-      }
-
-      hora_aux = hora;
-
-      matrixLed.setTextAlignment(PA_CENTER);
-      matrixLed.write(hora_aux);
-    }
-    break;
-  case print_wheater:
-    matrixLed.displayText(w, PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-    matrixLed.displayAnimate();
-    clime = print_stb;
-    break;
-  case print_alarm:
-    if (h_alarm == 100 && m_alarm == 100)
-    {
-      sprintf(alar, " Alarma desactivada ");
-      al = alar;
-    }
-    else
-    {
-      sprintf(alar, " Alarma activa: %d:%d", h_alarm, m_alarm);
-      al = alar;
-    }
-    matrixLed.displayText(al, PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-    matrixLed.displayAnimate();
-    clime = print_stb;
-    break;
-  case print_error_wifi:
-    matrixLed.displayText("No hay conexion wifi", PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-    matrixLed.displayAnimate();
-    clime = print_stb;
-  case print_stb:
-    clime = print_hour;
-    break;
-  }
-}
-
-void process_boton1()
-{
-  int val = digitalRead(B_1);
-  if (menu == menu_stb)
-  {
-    switch (P1)
-    {
-    case p_check:
-      if (val == 1)
-      {
-        timers[T_B1] = 2500;
-        P1 = p_push;
-        Serial.println("1 pulsado");
-      }
+void process_requestHour() {
+  switch (hour) {
+    case stb:
+      //do nothing
       break;
-    case p_time:
-      if (timers[T_B1] == 0)
-      {
-        P1 = p_check;
-      }
+    case checking:
+      timers[T_RequestHour] = 300000;
+      hour = request;
       break;
-    case p_push:
-      if (timers[T_B1] >= 2400)
-      {
-        //antirrebote
-      }
-      else if (timers[T_B1] < 2400 && timers[T_B1] > 0)
-      {
-        if (val == 1)
-        {
-          //do nothing
+    case request:
+      if (timers[T_RequestHour] == 0) {
+        Serial.println(getLocalTime(&timeinfo));
+        if (!getLocalTime(&timeinfo)) {
+          Serial.println("Error al sincronizar la hora");
+          return;
         }
-        else if (val == 0)
-        {
-          if (flag_alarm == 1)
-          {
-            buzzer = buzzer_off;
-            flag_alarm = 0;
-            timers[T_B1] = 200;
-            P1 = p_time;
-          }
-          else
-          {
-            clime = print_wheater;
-            timers[T_B1] = 9000;
-            P1 = p_time;
-            timers[T_B2] = 9000;
-            P2 = p_time;
-          }
-        }
-      }
-      else if (timers[T_B1] == 0)
-      {
+        Serial.print("Hora sincronizada exitosamente: ");
+        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+        h = timeinfo.tm_hour;
+        m = timeinfo.tm_min;
+        s = timeinfo.tm_sec;
+        mo = timeinfo.tm_mon;
         hour = stb;
-        menu = menu_hora;
-        timers[T_B1] == 1500;
-        P1 = p_time;
-        ledcWriteTone(0, 4000);
-        delay(500);
-        Serial.println("Ingresando al modo de configuracion de red wifi");
       }
       break;
-    }
   }
-  else if (menu == menu_hora)
-  {
+}
+
+void process_requestWeather() {
+  switch (weather) {
+    case stb:
+      timers[T_RequestWeather] = 60000;
+      weather = request;
+      break;
+    case request:
+      if (timers[T_RequestWeather] == 0) {
+        if (WiFi.status() == WL_CONNECTED) {
+          HTTPClient http;
+          http.begin("http://api.openweathermap.org/data/2.5/weather?q=Bogota&units=metric&lang=es&appid=d212d43340e59e9c201119a4fdae37c6");
+          int httpCode = http.GET();
+          if (httpCode > 0) {
+            String payloads = http.getString();
+            StaticJsonDocument<1000> doc;
+            deserializeJson(doc, payloads);
+            const char *clima = doc["weather"][0]["main"];
+            temperature = doc["main"]["temp"];
+            sensorDS18B20.requestTemperatures();
+            tem_amb_int = sensorDS18B20.getTempCByIndex(0);
+            sprintf(tem, " T:%d$ C:%s TA:%d$ ", temperature, clima, tem_amb_int);
+            w = tem;
+          }
+          http.end();
+        } else if (WiFi.status() == WL_DISCONNECTED) {
+          clime = print_error_wifi;
+        }
+        weather = stb;
+      }
+      break;
+  }
+}
+
+void process_print() {
+  switch (clime) {
+    case print_hour:
+      if (matrixLed.displayAnimate()) {
+
+        if ((m == 0 && s == 0) && (h != 21 && h != 22 && h != 23 && h != 0 && h != 1 && h != 2 && h != 3 && h != 4 && h != 5 && h != 6) && flag_alarm == 0) {
+          buzzer = buzzer_on_hour;
+        } else if (flag_alarm == 0) {
+          buzzer = buzzer_off;
+        }
+
+        if (h == h_alarm && m == m_alarm && s == 0 && flag_alarm == 0) {
+          buzzer = buzzer_on_alarm;
+          flag_alarm = 1;
+        }
+
+        if (h < 10 && m < 10) {
+          if (ind_alarma == 1) {
+            sprintf(hora, "0%d:0%d!", h, m);
+          } else if (ind_alarma == 0) {
+            sprintf(hora, "0%d:0%d#", h, m);
+          }
+        } else if (h > 9 && m > 9) {
+          if (ind_alarma == 1) {
+            sprintf(hora, "%d:%d!", h, m);
+          } else if (ind_alarma == 0) {
+            sprintf(hora, "%d:%d#", h, m);
+          }
+        } else if (h < 10 && m > 9) {
+          if (ind_alarma == 1) {
+            sprintf(hora, "0%d:%d!", h, m);
+          } else if (ind_alarma == 0) {
+            sprintf(hora, "0%d:%d#", h, m);
+          }
+        } else if (h > 9 && m < 10) {
+          if (ind_alarma == 1) {
+            sprintf(hora, "%d:0%d!", h, m);
+          } else if (ind_alarma == 0) {
+            sprintf(hora, "%d:0%d#", h, m);
+          }
+        }
+
+        hora_aux = hora;
+
+        matrixLed.setTextAlignment(PA_CENTER);
+        matrixLed.write(hora_aux);
+      }
+      break;
+    case print_wheater:
+      matrixLed.displayText(w, PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+      matrixLed.displayAnimate();
+      clime = print_stb;
+      break;
+    case print_alarm:
+      if (h_alarm == 100 && m_alarm == 100) {
+        sprintf(alar, " Alarma desactivada ");
+        al = alar;
+      } else {
+        sprintf(alar, " Alarma activa: %d:%d", h_alarm, m_alarm);
+        al = alar;
+      }
+      matrixLed.displayText(al, PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+      matrixLed.displayAnimate();
+      clime = print_stb;
+      break;
+    case print_error_wifi:
+      matrixLed.displayText("No hay conexion wifi", PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+      matrixLed.displayAnimate();
+      clime = print_stb;
+    case print_stb:
+      clime = print_hour;
+      break;
+  }
+}
+
+void process_boton1() {
+  int val = digitalRead(B_1);
+  if (menu == menu_stb) {
+    switch (P1) {
+      case p_check:
+        if (val == 1) {
+          timers[T_B1] = 2500;
+          P1 = p_push;
+          Serial.println("1 pulsado");
+        }
+        break;
+      case p_time:
+        if (timers[T_B1] == 0) {
+          P1 = p_check;
+        }
+        break;
+      case p_push:
+        if (timers[T_B1] >= 2400) {
+          //antirrebote
+        } else if (timers[T_B1] < 2400 && timers[T_B1] > 0) {
+          if (val == 1) {
+            //do nothing
+          } else if (val == 0) {
+            if (flag_alarm == 1) {
+              buzzer = buzzer_off;
+              flag_alarm = 0;
+              timers[T_B1] = 200;
+              P1 = p_time;
+            } else {
+              clime = print_wheater;
+              timers[T_B1] = 9000;
+              P1 = p_time;
+              timers[T_B2] = 9000;
+              P2 = p_time;
+            }
+          }
+        } else if (timers[T_B1] == 0) {
+          hour = stb;
+          menu = menu_hora;
+          timers[T_B1] == 1500;
+          P1 = p_time;
+          ledcWriteTone(0, 4000);
+          delay(500);
+          Serial.println("Ingresando al modo de configuracion de red wifi");
+        }
+        break;
+    }
+  } else if (menu == menu_hora) {
     Serial.println("Reiniciando ESP32");
     ESP.restart();
   }
 }
 
-void process_boton2()
-{
+void process_boton2() {
   int val2 = digitalRead(B_2);
-  switch (P2)
-  {
-  case p_check:
-    if (val2 == 1)
-    {
-      timers[T_B2] = 2500;
-      P2 = p_push;
-      Serial.println("2 pulsado");
-    }
-    break;
-  case p_time:
-    if (timers[T_B2] == 0)
-    {
-      P2 = p_check;
-    }
-    break;
-  case p_push:
-    if (timers[T_B2] >= 2400)
-    {
-      //antirrebote
-    }
-    else if (timers[T_B2] < 2400 && timers[T_B2] > 0)
-    {
-      if (val2 == 1)
-      {
-        //do nothing
+  switch (P2) {
+    case p_check:
+      if (val2 == 1) {
+        timers[T_B2] = 2500;
+        P2 = p_push;
+        Serial.println("2 pulsado");
       }
-      else if (val2 == 0)
-      {
-        if (flag_alarm == 1)
-        {
-          buzzer = buzzer_off;
-          flag_alarm = 0;
-          timers[T_B2] = 200;
-          P2 = p_time;
-        }
-        else
-        {
-          clime = print_alarm;
-          timers[T_B2] = 7000;
-          P2 = p_time;
-          timers[T_B1] = 7000;
-          P1 = p_time;
-        }
+      break;
+    case p_time:
+      if (timers[T_B2] == 0) {
+        P2 = p_check;
       }
-    }
-    else if (timers[T_B2] == 0)
-    {
-      menu = menu_alarma;
-      Serial.println("modo alarma");
-    }
-    break;
+      break;
+    case p_push:
+      if (timers[T_B2] >= 2400) {
+        //antirrebote
+      } else if (timers[T_B2] < 2400 && timers[T_B2] > 0) {
+        if (val2 == 1) {
+          //do nothing
+        } else if (val2 == 0) {
+          if (flag_alarm == 1) {
+            buzzer = buzzer_off;
+            flag_alarm = 0;
+            timers[T_B2] = 200;
+            P2 = p_time;
+          } else {
+            clime = print_alarm;
+            timers[T_B2] = 7000;
+            P2 = p_time;
+            timers[T_B1] = 7000;
+            P1 = p_time;
+          }
+        }
+      } else if (timers[T_B2] == 0) {
+        menu = menu_alarma;
+        Serial.println("modo alarma");
+      }
+      break;
   }
 }
 
-void process_reconnect()
-{
-  switch (wifi)
-  {
-  case conect:
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    wifi = check;
-    break;
-  case check_reconect:
-    if (timers[T_Reconect] == 0)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        wifi = conect;
-        Serial.println("Wifi conectado");
+void process_reconnect() {
+  switch (wifi) {
+    case conect:
+      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      wifi = check;
+      break;
+    case check_reconect:
+      if (timers[T_Reconect] == 0) {
+        if (WiFi.status() == WL_CONNECTED) {
+          wifi = conect;
+          Serial.println("Wifi conectado");
+        } else {
+          wifi = reconect;
+        }
       }
-      else
-      {
+      break;
+    case check:
+      if (WiFi.status() == WL_DISCONNECTED) {
         wifi = reconect;
+        Serial.println("WiFi desconectado");
       }
-    }
-    break;
-  case check:
-    if (WiFi.status() == WL_DISCONNECTED)
-    {
-      wifi = reconect;
-      Serial.println("WiFi desconectado");
-    }
-    break;
-  case reconect:
-    WiFi.begin(ssid, password);
-    Serial.println("Reconectado...");
-    timers[T_Reconect] = 10000;
-    wifi = check_reconect;
-    break;
+      break;
+    case reconect:
+      WiFi.begin(ssid, password);
+      Serial.println("Reconectado...");
+      timers[T_Reconect] = 10000;
+      wifi = check_reconect;
+      break;
   }
 }
 
-void process_sendDataTemperature()
-{
-  switch (ambiente)
-  {
-  case request:
-    if (timers[T_RequestTemperature] == 0)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        sensorDS18B20.requestTemperatures();
-        tem_amb = sensorDS18B20.getTempCByIndex(0);
+void process_sendDataTemperature() {
+  switch (ambiente) {
+    case request:
+      if (timers[T_RequestTemperature] == 0) {
+        if (WiFi.status() == WL_CONNECTED) {
+          sensorDS18B20.requestTemperatures();
+          tem_amb = sensorDS18B20.getTempCByIndex(0);
 
-        http3.begin("https://your-clock.herokuapp.com/api/datos");
-        http3.addHeader("Content-Type", "application/json");
-        serie2 = "";
-        doc3["temp_amb"] = tem_amb;
-        doc3["temp_local"] = temperature;
+          http3.begin("https://your-clock.herokuapp.com/api/datos");
+          http3.addHeader("Content-Type", "application/json");
+          serie2 = "";
+          doc3["temp_amb"] = tem_amb;
+          doc3["temp_local"] = temperature;
 
-        serializeJson(doc3, serie2);
-        Serial.print("Datos a enviar: ");
-        Serial.println(serie2);
-        int code = http3.POST(serie2);
-        if (code > 0)
-        {
-          Serial.println("Informacion enviada correctamente");
-        }
-        else
-        {
-          Serial.print("Error al enviar la data, codigo: ");
-          Serial.println(code);
-        }
-        http3.end();
-      }
-      ambiente = stb;
-    }
-    break;
-  case stb:
-    timers[T_RequestTemperature] = 20000;
-    ambiente = request;
-    break;
-  }
-}
-
-void process_buzzer()
-{
-  switch (buzzer)
-  {
-  case buzzer_on_alarm:
-    timers[T_buzzer] = 60000 * 2;
-    buzzer = buzzer_stb_alarm;
-
-    break;
-  case buzzer_on_hour:
-
-    ledcWriteTone(0, 4000);
-    buzzer = buzzer_stb;
-
-    break;
-  case buzzer_off:
-
-    ledcWriteTone(0, 0);
-    buzzer = buzzer_stb;
-
-    break;
-  case buzzer_stb:
-
-    //do nothing
-
-    break;
-  case buzzer_stb_alarm:
-    if (timers[T_buzzer] > 0)
-    {
-      if (timers[T_buzzer] % 1000 == 0)
-      {
-        if (switch_alarm == 0)
-        {
-          if (enabled_sound)
-          {
-            ledcWriteTone(0, 4000);
-            enabled_sound = 1;
+          serializeJson(doc3, serie2);
+          Serial.print("Datos a enviar: ");
+          Serial.println(serie2);
+          int code = http3.POST(serie2);
+          if (code > 0) {
+            Serial.println("Informacion enviada correctamente");
+          } else {
+            Serial.print("Error al enviar la data, codigo: ");
+            Serial.println(code);
           }
-          else
-          {
-            ledcWriteTone(0, 0);
-            enabled_sound = 0;
-          }
-          enabled_sound = !enabled_sound;
-          switch_alarm = 1;
+          http3.end();
         }
+        ambiente = stb;
       }
-      else
-      {
-        switch_alarm = 0;
-      }
-    }
-    else
-    {
-      buzzer = buzzer_off;
-    }
-
-    break;
+      break;
+    case stb:
+      timers[T_RequestTemperature] = 20000;
+      ambiente = request;
+      break;
   }
 }
 
-int controlAlarma(String hora_alarma)
-{
+void process_buzzer() {
+  switch (buzzer) {
+    case buzzer_on_alarm:
+      timers[T_buzzer] = 60000 * 2;
+      buzzer = buzzer_stb_alarm;
+
+      break;
+    case buzzer_on_hour:
+
+      ledcWriteTone(0, 4000);
+      buzzer = buzzer_stb;
+
+      break;
+    case buzzer_off:
+
+      ledcWriteTone(0, 0);
+      buzzer = buzzer_stb;
+
+      break;
+    case buzzer_stb:
+
+      //do nothing
+
+      break;
+    case buzzer_stb_alarm:
+      if (timers[T_buzzer] > 0) {
+        if (timers[T_buzzer] % 1000 == 0) {
+          if (switch_alarm == 0) {
+            if (enabled_sound) {
+              ledcWriteTone(0, 4000);
+              enabled_sound = 1;
+            } else {
+              ledcWriteTone(0, 0);
+              enabled_sound = 0;
+            }
+            enabled_sound = !enabled_sound;
+            switch_alarm = 1;
+          }
+        } else {
+          switch_alarm = 0;
+        }
+      } else {
+        buzzer = buzzer_off;
+      }
+
+      break;
+  }
+}
+
+int controlAlarma(String hora_alarma) {
 
   int aux_alarma = hora_alarma.toInt();
-  if (aux_alarma == 0)
-  {
+  if (aux_alarma == 0) {
     h_alarm = 0;
     m_alarm = 0;
     ind_alarma = 1;
-  }
-  else if (aux_alarma >= 1 && aux_alarma <= 59)
-  {
+  } else if (aux_alarma >= 1 && aux_alarma <= 59) {
     h_alarm = 0;
     m_alarm = aux_alarma;
     ind_alarma = 1;
-  }
-  else if (aux_alarma >= 100 && aux_alarma <= 2359)
-  {
+  } else if (aux_alarma >= 100 && aux_alarma <= 2359) {
     h_alarm = (aux_alarma / 100);
     m_alarm = aux_alarma - (h_alarm * 100);
     ind_alarma = 1;
-  }
-  else
-  {
+  } else {
     h_alarm = 100;
     m_alarm = 100;
     ind_alarma = 0;
@@ -853,79 +716,69 @@ int controlAlarma(String hora_alarma)
   return 1;
 }
 
-void modoconf()
-{
+void modoconf() {
 
   WiFi.softAP(ssidConf, passConf);
   IPAddress myIP = WiFi.softAPIP();
   Serial.print("IP del access point: ");
   Serial.println(myIP);
   Serial.println("WebServer iniciado");
-  if (!MDNS.begin("your-clock"))
-  {
+  if (!MDNS.begin("your-clock")) {
     Serial.println("Error iniciando mDNS");
   }
   Serial.println("mDNS iniciado");
 
   matrixLed.displayText("Ingresa a http://" + myIP, PA_CENTER, 30, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-  server.on("/", paginaconf);               //esta es la pagina de configuracion
-  server.on("/guardar_conf", guardar_conf); //Graba en la eeprom la configuracion
-  server.on("/escanear", escanear);         //Escanean las redes wifi disponibles
+  server.on("/", paginaconf);                //esta es la pagina de configuracion
+  server.on("/guardar_conf", guardar_conf);  //Graba en la eeprom la configuracion
+  server.on("/escanear", escanear);          //Escanean las redes wifi disponibles
   server.begin();
-  while (true)
-  {
-    matrixLed.displayAnimate();
+  Serial.println("Server iniciado");
+  while (true) {
+    Serial.println("In while");
+    //matrixLed.displayAnimate();
+    //Serial.println("proyectando");
     server.handleClient();
+    Serial.println("Ejecutando");
   }
 }
 
-String leer(int addr)
-{
+String leer(int addr) {
   byte lectura;
   String strlectura;
-  for (int i = addr; i < addr + 50; i++)
-  {
+  for (int i = addr; i < addr + 50; i++) {
     lectura = EEPROM.read(i);
-    if (lectura != 255)
-    {
+    if (lectura != 255) {
       strlectura += (char)lectura;
     }
   }
   return strlectura;
 }
 
-void grabar(int addr, String a)
-{
+void grabar(int addr, String a) {
   int tamano = a.length();
   char inchar[50];
   a.toCharArray(inchar, tamano + 1);
-  for (int i = 0; i < tamano; i++)
-  {
+  for (int i = 0; i < tamano; i++) {
     EEPROM.write(addr + i, inchar[i]);
   }
-  for (int i = tamano; i < 50; i++)
-  {
+  for (int i = tamano; i < 50; i++) {
     EEPROM.write(addr + i, 255);
   }
   EEPROM.commit();
 }
 
-void escanear()
-{
-  int n = WiFi.scanNetworks(); //devuelve el número de redes encontradas
+void escanear() {
+  int n = WiFi.scanNetworks();  //devuelve el número de redes encontradas
   Serial.println("escaneo terminado");
-  if (n == 0)
-  { //si no encuentra ninguna red
+  if (n == 0) {  //si no encuentra ninguna red
     Serial.println("no se encontraron redes");
     mensaje = "no se encontraron redes";
-  }
-  else
-  {
+  } else {
     Serial.print(n);
     Serial.println(" redes encontradas");
     mensaje = "";
-    for (int i = 0; i < n; ++i)
-    {
+    for (int i = 0; i < n; ++i) {
       // agrega al STRING "mensaje" la información de las redes encontradas
       mensaje = (mensaje) + "<p>" + String(i + 1) + ": " + WiFi.SSID(i) + " (" + WiFi.RSSI(i) + ") Ch: " + WiFi.channel(i) + " Enc: " + WiFi.encryptionType(i) + " </p>\r\n";
       //WiFi.encryptionType 5:WEP 2:WPA/PSK 4:WPA2/PSK 7:open network 8:WPA/WPA2/PSK
@@ -936,15 +789,13 @@ void escanear()
   }
 }
 
-void paginaconf()
-{
+void paginaconf() {
   server.send(200, "text/html", pagina + mensaje + paginafin);
 }
 
-void guardar_conf()
-{
+void guardar_conf() {
 
-  Serial.println(server.arg("ssid")); //Recibimos los valores que envia por GET el formulario web
+  Serial.println(server.arg("ssid"));  //Recibimos los valores que envia por GET el formulario web
   grabar(0, server.arg("ssid"));
   Serial.println(server.arg("pass"));
   grabar(50, server.arg("pass"));
