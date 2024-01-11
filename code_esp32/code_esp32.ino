@@ -2,8 +2,8 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
+#include <ArduinoOTA.h>
 #include <ArduinoJson.h>
-#include <SPI.h>
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
 #include <time.h>
@@ -150,13 +150,14 @@ String pagina = "<!DOCTYPE html>"
                 "<body>"
                 "</form>"
                 "<form action='guardar_conf' method='get'>"
-                "SSID:<br><br>"
+                "SSID:"
                 "<input class='input1' name='ssid' type='text'><br>"
-                "PASSWORD:<br><br>"
+                "PASSWORD:"
                 "<input class='input1' name='pass' type='password'><br><br>"
-                "<input class='boton' type='submit' value='GUARDAR'/><br><br>"
+                "<input class='boton' type='submit' value='GUARDAR Y REINICIAR'/><br><br>"
                 "</form>"
-                "<a href='escanear'><button class='boton'>ESCANEAR</button></a><br><br>";
+                "<a href='cancelar_conf'><button class='boton'>CANCELAR</button></a><br><br>"
+                "<a href='escanear'><button class='boton'>ESCANEAR</button></a><br>";
 
 String paginafin = "</body>"
                    "</html>";
@@ -201,6 +202,7 @@ String leer(int addr);
 void grabar(int addr, String a);
 void paginaconf();
 void escanear();
+void cancelar_conf();
 
 void setup() {
 
@@ -219,9 +221,6 @@ void setup() {
   matrixLed.write("Hola :D");
 
   EEPROM.begin(512);
-  if (digitalRead(B_1) == 1 || digitalRead(B_2) == 1) {
-    modoconf();
-  }
 
   leer(0).toCharArray(ssid, 50);
   leer(50).toCharArray(password, 50);
@@ -246,6 +245,10 @@ void setup() {
   xTaskCreatePinnedToCore(loop1, "Task_1", 5120, NULL, 1, &Task1, 0);
   xTaskCreatePinnedToCore(loop2, "Task_2", 6144, NULL, 1, &Task2, 1);
   xTaskCreatePinnedToCore(loop3, "Task_3", 5120, NULL, 1, &Task3, 0);
+
+  ArduinoOTA.begin();
+
+  Serial.printf("Memoria libre: %u bytes \n", ESP.getFreeSketchSpace());
 }
 
 void loop() {
@@ -277,6 +280,7 @@ void loop2(void *parameter) {
     TIMERG0.wdt_feed = 1;
     TIMERG0.wdt_wprotect = 0;
 
+    ArduinoOTA.handle();
     process_reconnect();
   }
   vTaskDelay(10);
@@ -329,7 +333,7 @@ void digitalClockDisplay() {
   if (menu == menu_stb) {
     if (timer2.isReady()) {
       s = s + 1;
-      if (s == 60) {
+      if (s == 59) {
         m = m + 1;
         s = 0;
       }
@@ -475,6 +479,7 @@ void process_print() {
       matrixLed.displayText("No hay conexion wifi", PA_CENTER, speedDisplay, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
       matrixLed.displayAnimate();
       clime = print_stb;
+      break;
     case print_stb:
       clime = print_hour;
       break;
@@ -483,54 +488,50 @@ void process_print() {
 
 void process_boton1() {
   int val = digitalRead(B_1);
-  if (menu == menu_stb) {
-    switch (P1) {
-      case p_check:
+  switch (P1) {
+    case p_check:
+      if (val == 1) {
+        timers[T_B1] = 2500;
+        P1 = p_push;
+        Serial.println("1 pulsado");
+      }
+      break;
+    case p_time:
+      if (timers[T_B1] == 0) {
+        P1 = p_check;
+      }
+      break;
+    case p_push:
+      if (timers[T_B1] >= 2400) {
+        //antirrebote
+      } else if (timers[T_B1] < 2400 && timers[T_B1] > 0) {
         if (val == 1) {
-          timers[T_B1] = 2500;
-          P1 = p_push;
-          Serial.println("1 pulsado");
-        }
-        break;
-      case p_time:
-        if (timers[T_B1] == 0) {
-          P1 = p_check;
-        }
-        break;
-      case p_push:
-        if (timers[T_B1] >= 2400) {
-          //antirrebote
-        } else if (timers[T_B1] < 2400 && timers[T_B1] > 0) {
-          if (val == 1) {
-            //do nothing
-          } else if (val == 0) {
-            if (flag_alarm == 1) {
-              buzzer = buzzer_off;
-              flag_alarm = 0;
-              timers[T_B1] = 200;
-              P1 = p_time;
-            } else {
-              clime = print_wheater;
-              timers[T_B1] = 9000;
-              P1 = p_time;
-              timers[T_B2] = 9000;
-              P2 = p_time;
-            }
+          //do nothing
+        } else if (val == 0) {
+          if (flag_alarm == 1) {
+            buzzer = buzzer_off;
+            flag_alarm = 0;
+            timers[T_B1] = 200;
+            P1 = p_time;
+          } else {
+            clime = print_wheater;
+            timers[T_B1] = 9000;
+            P1 = p_time;
+            timers[T_B2] = 9000;
+            P2 = p_time;
           }
-        } else if (timers[T_B1] == 0) {
-          hour = stb;
-          menu = menu_hora;
-          timers[T_B1] == 1500;
-          P1 = p_time;
-          ledcWriteTone(0, 4000);
-          delay(500);
-          Serial.println("Ingresando al modo de configuracion de red wifi");
         }
-        break;
-    }
-  } else if (menu == menu_hora) {
-    Serial.println("Reiniciando ESP32");
-    ESP.restart();
+      } else if (timers[T_B1] == 0) {
+        hour = stb;
+        timers[T_B1] == 1500;
+        P1 = p_time;
+        ledcWriteTone(0, 4000);
+        delay(750);
+        ledcWriteTone(0, 0);
+        Serial.println("Ingresando al modo de configuracion de red wifi");
+        modoconf();
+      }
+      break;
   }
 }
 
@@ -570,8 +571,14 @@ void process_boton2() {
           }
         }
       } else if (timers[T_B2] == 0) {
-        menu = menu_alarma;
-        Serial.println("modo alarma");
+        hour = stb;
+        timers[T_B1] == 1500;
+        P1 = p_time;
+        ledcWriteTone(0, 4000);
+        delay(750);
+        ledcWriteTone(0, 0);
+        Serial.println("Ingresando al modo de configuracion de red wifi");
+        modoconf();
       }
       break;
   }
@@ -601,7 +608,7 @@ void process_reconnect() {
       break;
     case reconect:
       WiFi.begin(ssid, password);
-      Serial.println("Reconectado...");
+      Serial.println("Reconectando...");
       timers[T_Reconect] = 10000;
       wifi = check_reconect;
       break;
@@ -616,21 +623,22 @@ void process_sendDataTemperature() {
           sensorDS18B20.requestTemperatures();
           tem_amb = sensorDS18B20.getTempCByIndex(0);
 
-          http3.begin("https://your-clock.herokuapp.com/api/datos");
+          http3.begin("https://your-clock.up.railway.app/api/reloj/datos");
           http3.addHeader("Content-Type", "application/json");
+          http3.addHeader("device_id", "114");
           serie2 = "";
           doc3["temp_amb"] = tem_amb;
           doc3["temp_local"] = temperature;
 
           serializeJson(doc3, serie2);
-          Serial.print("Datos a enviar: ");
-          Serial.println(serie2);
+
+          Serial.println("Datos a enviar: " + serie2);
           int code = http3.POST(serie2);
+          String payload = http3.getString();
           if (code > 0) {
-            Serial.println("Informacion enviada correctamente");
+            Serial.printf("Respuesta del servidor: %i - %s \n", code, payload);
           } else {
-            Serial.print("Error al enviar la data, codigo: ");
-            Serial.println(code);
+            Serial.printf("Error al enviar la data: %i - %s \n", code, payload);
           }
           http3.end();
         }
@@ -723,23 +731,21 @@ void modoconf() {
   Serial.print("IP del access point: ");
   Serial.println(myIP);
   Serial.println("WebServer iniciado");
-  if (!MDNS.begin("your-clock")) {
+  if (!MDNS.begin("yourclock")) {
     Serial.println("Error iniciando mDNS");
   }
   Serial.println("mDNS iniciado");
-
-  matrixLed.displayText("Ingresa a http://" + myIP, PA_CENTER, 30, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-  server.on("/", paginaconf);                //esta es la pagina de configuracion
-  server.on("/guardar_conf", guardar_conf);  //Graba en la eeprom la configuracion
-  server.on("/escanear", escanear);          //Escanean las redes wifi disponibles
+  //matrixLed.displayText("Ingresa a http://" + myIP, PA_CENTER, 30, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+  //matrixLed.displayAnimate();
+  server.on("/", paginaconf);                  //esta es la pagina de configuracion
+  server.on("/guardar_conf", guardar_conf);    //Graba en la eeprom la configuracion y reinicia el ESP32
+  server.on("/escanear", escanear);            //Escanean las redes wifi disponibles
+  server.on("/cancelar_conf", cancelar_conf);  //Cancela y reinicia el ESP32
   server.begin();
   Serial.println("Server iniciado");
   while (true) {
-    Serial.println("In while");
     //matrixLed.displayAnimate();
-    //Serial.println("proyectando");
     server.handleClient();
-    Serial.println("Ejecutando");
   }
 }
 
@@ -800,6 +806,12 @@ void guardar_conf() {
   Serial.println(server.arg("pass"));
   grabar(50, server.arg("pass"));
 
-  mensaje = "Configuracion Guardada...";
+  mensaje = "Configuracion Guardada, reiniciando el reloj...";
   paginaconf();
+  delay(1000);
+  ESP.restart();
+}
+
+void cancelar_conf() {
+  ESP.restart();
 }
