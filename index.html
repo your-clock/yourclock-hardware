@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Set YourClock WiFi</title>
+</head>
+
+<body>
+    <div id="app">
+        <div id="header">
+            <button id="button_exit"></button>
+        </div>
+        <div id="forms">
+            <div id="form_wifi">
+                <div id="title_ssid">SSID:</div>
+                <input id='input_ssid' type='text'>
+                <div id="title_password">PASSWORD:</div>
+                <input id='input_password' type='password'>
+                <button id="button_save" class="button">GUARDAR</button>
+                <p id="text_response_wifi"></p>
+            </div>
+            <div id="form_scan">
+                <button id='button_scan' class="button">ESCANEAR</button>
+                <div id="text_response_scan"></div>
+                <ol type="1" id='list_wifi'></ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        const buttonScan = document.getElementById("button_scan");
+        const buttonSave = document.getElementById("button_save");
+        const buttonExit = document.getElementById("button_exit");
+        const inputPassword = document.getElementById("input_password");
+        const inputSsid = document.getElementById("input_ssid");
+        const listWifi = document.getElementById("list_wifi");
+        const textResponseWifi = document.getElementById("text_response_wifi");
+        const textResponseScan = document.getElementById("text_response_scan");
+
+        buttonScan.addEventListener("click", scan);
+        buttonSave.addEventListener("click", save);
+        buttonExit.addEventListener("click", exit);
+
+        async function request(method, url, bodyRequest = null) {
+            var requestOptions = {
+                method: method,
+                body: bodyRequest
+            }
+            try {
+                var response = await fetch(url, requestOptions);
+                var bodyResponse = await response.text();
+                return { "body": bodyResponse, "statusCode": response.status, "statusText": response.statusText };
+            } catch (error) {
+                console.error(error);
+                return { "body": error, "statusCode": 0, "statusText": "ERROR" };
+            }
+        }
+
+        async function scan() {
+            startOperation(buttonScan);
+            let result = await request("GET", "http://%ip/scan");
+            textResponseScan.innerHTML = "";
+            while (listWifi.firstChild) {
+                listWifi.removeChild(listWifi.firstChild);
+            }
+            if (result.statusCode == 200) {
+                endOperation(buttonScan, "success_operation");
+                var networks = JSON.parse(result.body).networks;
+                textResponseScan.innerHTML = "Estas son las redes WiFi mas cercanas a su dispositivo:"
+                for (let i = 0; i < networks.length; i++) {
+                    var node = document.createElement('li');
+                    node.appendChild(document.createTextNode(networks[i]));
+                    listWifi.appendChild(node);
+                }
+            } else if (result.statusCode == 204) {
+                textResponseScan.innerHTML = "No hay redes WiFi disponibles en este momento";
+            } else {
+                endOperation(buttonScan, "failed_operation");
+                textResponseScan.innerHTML = "Hubo un error al escanear las redes WiFi, verifique la conexion y vuelva a intentarlo";
+            }
+        }
+
+        async function save() {
+            startOperation(buttonSave);
+            textResponseWifi.innerHTML = "";
+            let result = await request("POST", `http://%ip/save?ssid=${inputSsid.value}&pass=${inputPassword.value}`);
+            if (result.statusCode == 200) {
+                endOperation(buttonSave, "success_operation");
+                textResponseWifi.innerHTML = "Credenciales guardadas exitosamente en el dispositivo";
+            } else {
+                endOperation(buttonSave, "failed_operation");
+                textResponseWifi.innerHTML = "Hubo un error al guardar las credenciales en el dispositivo, verifique la conexion y vuelva a intentarlo";
+            }
+        }
+
+        async function exit() {
+            let result = await request("GET", "http://%ip/restart");
+            if (result.statusCode == 200) {
+                window.open('', '_parent', '');
+                window.close();
+            }
+        }
+
+        function startOperation(elementChild) {
+            elementChild.setAttribute('disabled', "true");
+            elementChild.classList.add("start");
+        }
+
+        function endOperation(elementChild, classStatusOperation) {
+            let title = elementChild.innerHTML;
+            elementChild.innerHTML = "";
+            elementChild.classList.remove("start");
+            elementChild.classList.add(classStatusOperation);
+            setTimeout(function () {
+                elementChild.classList.remove(classStatusOperation);
+                elementChild.innerHTML = title;
+                elementChild.removeAttribute('disabled')
+            }, 1250);
+        }
+
+    </script>
+    <style>
+        #app {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #header {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        #button_exit {
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            border: 1px solid #797979;
+            position: relative;
+            transition: all 0.5s ease;
+            background: rgb(241, 241, 241);
+        }
+
+        #button_exit:hover {
+            border: 0;
+            box-shadow: 1px 4px 8px 1px #00000066, 1px 6px 20px 1px #00000063;
+            background: #ff4c4c;
+        }
+
+        #button_exit:hover::before, #button_exit:hover::after {
+            background-color: #f1f1f1;
+            box-shadow: 1px 4px 8px 1px #00000066, 1px 6px 20px 1px #00000063;
+        }
+
+        #button_exit::before {
+            content: " ";
+            position: absolute;
+            background-color: #797979;
+            width: 3px;
+            left: 17px;
+            top: 5px;
+            bottom: 5px;
+            transform: rotate(45deg);
+        }
+
+        #button_exit::after {
+            content: " ";
+            position: absolute;
+            background-color: #797979;
+            height: 3px;
+            top: 17px;
+            left: 5px;
+            right: 5px;
+            transform: rotate(45deg);
+        }
+
+        #forms {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #form_wifi, #form_scan {
+            display: flex;
+            flex-direction: column;
+            text-align: center;
+            width: 300px;
+            border-radius: 25px;
+            padding: 40px 48px;
+            box-shadow: 0 5px 9px 0 #00000033, 0 7px 21px 0 #00000030;
+            margin-bottom: 30px;
+        }
+
+        #text_response_scan {
+            margin-top: 25px;
+        }
+
+        #text_response_wifi {
+            margin-top: 25px;
+            margin-bottom: 0;
+        }
+
+        input {
+            height: 30px;
+            font-size: 16px;
+            padding-left: 5px;
+            padding-bottom: 0px;
+            margin-bottom: 30px;
+            color: #858585;
+            border: 0;
+            letter-spacing: 1px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            transition: all 0.5s ease;
+        }
+
+        input:focus, input:hover {
+            box-shadow: 1px 4px 8px 1px #00000033, 1px 6px 20px 1px #00000030;
+            background: #f0f0f0;
+            border: 0;
+            outline: none;
+        }
+
+        .button {
+            height: 40px;
+            text-align: center;
+            border-radius: 40px;
+            background: #f3f3f3;
+            border: 0;
+            box-shadow: 1px 4px 8px 1px #00000033, 1px 6px 20px 1px #00000030;
+            color: #858585;
+            letter-spacing: 1px;
+            text-shadow: 0;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.5s ease;
+        }
+
+        .button:hover {
+            color: #333333;
+            background: #e6e6e6;
+        }
+
+        .start {
+            margin-left: calc(50% - 15px);
+            width: 40px;
+            font-size: 0;
+            animation: rotating 2s 0.25s linear infinite;
+            cursor: default;
+        }
+
+        .success_operation {
+            font-size: 13px;
+            color: white;
+            background: #88ff8e;
+            box-shadow: 1px 4px 8px 1px #00ff0033, 1px 6px 20px 1px #00ff0030;
+            border: 0;
+        }
+
+        .success_operation:hover {
+            color: white;
+            background: #88ff8e;
+            box-shadow: 1px 4px 8px 1px #00ff0033, 1px 6px 20px 1px #00ff0030;
+        }
+
+        .success_operation:after {
+            content: "\2713";
+        }
+
+        .failed_operation {
+            border: 0;
+            box-shadow: 1px 4px 8px 1px #ff000033, 1px 6px 20px 1px #ff000030;
+            font-size: 13px;
+            color: white;
+            background: #ff8888;
+        }
+
+        .failed_operation:after {
+            content: "\2718";
+        }
+
+        .failed_operation:hover {
+            box-shadow: 1px 4px 8px 1px #ff000033, 1px 6px 20px 1px #ff000030;
+            color: white;
+            background: #ff8888;
+        }
+
+        @keyframes rotating {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</body>
+
+</html>
+
+<!-- HTML comprimido:
+
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Set YourClock WiFi</title></head><body><div id="app"><div id="header"><button id="button_exit"></button></div><div id="forms"><div id="form_wifi"><div id="title_ssid">SSID:</div><input id="input_ssid" type="text"><div id="title_password">PASSWORD:</div><input id="input_password" type="password"><button id="button_save" class="button">GUARDAR</button><p id="text_response_wifi"></p></div><div id="form_scan"><button id="button_scan" class="button">ESCANEAR</button><div id="text_response_scan"></div><ol type="1" id="list_wifi"></ol></div></div></div><script>const buttonScan=document.getElementById("button_scan"),buttonSave=document.getElementById("button_save"),buttonExit=document.getElementById("button_exit"),inputPassword=document.getElementById("input_password"),inputSsid=document.getElementById("input_ssid"),listWifi=document.getElementById("list_wifi"),textResponseWifi=document.getElementById("text_response_wifi"),textResponseScan=document.getElementById("text_response_scan");async function request(e,t,n=null){var s={method:e,body:n};try{var i=await fetch(t,s);return{body:await i.text(),statusCode:i.status,statusText:i.statusText}}catch(e){return console.error(e),{body:e,statusCode:0,statusText:"ERROR"}}}async function scan(){startOperation(buttonScan);let e=await request("GET","http://%ip/scan");for(textResponseScan.innerHTML="";listWifi.firstChild;)listWifi.removeChild(listWifi.firstChild);if(200==e.statusCode){endOperation(buttonScan,"success_operation");var t=JSON.parse(e.body).networks;textResponseScan.innerHTML="Estas son las redes WiFi mas cercanas a su dispositivo:";for(let e=0;e<t.length;e++){var n=document.createElement("li");n.appendChild(document.createTextNode(t[e])),listWifi.appendChild(n)}}else 204==e.statusCode?textResponseScan.innerHTML="No hay redes WiFi disponibles en este momento":(endOperation(buttonScan,"failed_operation"),textResponseScan.innerHTML="Hubo un error al escanear las redes WiFi, verifique la conexion y vuelva a intentarlo")}async function save(){startOperation(buttonSave),textResponseWifi.innerHTML="",200==(await request("POST",`http://%ip/save?ssid=${inputSsid.value}&pass=${inputPassword.value}`)).statusCode?(endOperation(buttonSave,"success_operation"),textResponseWifi.innerHTML="Credenciales guardadas exitosamente en el dispositivo"):(endOperation(buttonSave,"failed_operation"),textResponseWifi.innerHTML="Hubo un error al guardar las credenciales en el dispositivo, verifique la conexion y vuelva a intentarlo")}async function exit(){200==(await request("GET","http://%ip/restart")).statusCode&&(window.open("","_parent",""),window.close())}function startOperation(e){e.setAttribute("disabled","true"),e.classList.add("start")}function endOperation(e,t){let n=e.innerHTML;e.innerHTML="",e.classList.remove("start"),e.classList.add(t),setTimeout((function(){e.classList.remove(t),e.innerHTML=n,e.removeAttribute("disabled")}),1250)}buttonScan.addEventListener("click",scan),buttonSave.addEventListener("click",save),buttonExit.addEventListener("click",exit);</script><style>#app,#forms{flex-direction:column;display:flex}#button_exit::after,#button_exit::before{content:" ";position:absolute;background-color:#797979;transform:rotate(45deg)}#app,#forms,#header{display:flex}.button,input:focus,input:hover{box-shadow:1px 4px 8px 1px #00000033,1px 6px 20px 1px #00000030}.button,input{color:#858585;letter-spacing:1px;transition:.5s}#button_exit,.button,input{transition:.5s}#header{justify-content:flex-end}#button_exit{border-radius:50%;width:40px;height:40px;border:1px solid #797979;position:relative;background:#f1f1f1}#button_exit:hover{border:0;box-shadow:1px 4px 8px 1px #00000066,1px 6px 20px 1px #00000063;background:#ff4c4c}#button_exit:hover::after,#button_exit:hover::before{background-color:#f1f1f1;box-shadow:1px 4px 8px 1px #00000066,1px 6px 20px 1px #00000063}#button_exit::before{width:3px;left:17px;top:5px;bottom:5px}#button_exit::after{height:3px;top:17px;left:5px;right:5px}#forms{align-items:center;justify-content:center}#form_scan,#form_wifi{display:flex;flex-direction:column;text-align:center;width:300px;border-radius:25px;padding:40px 48px;box-shadow:0 5px 9px 0 #00000033,0 7px 21px 0 #00000030;margin-bottom:30px}#text_response_scan{margin-top:25px}#text_response_wifi{margin-top:25px;margin-bottom:0}input{height:30px;font-size:16px;padding-left:5px;padding-bottom:0;margin-bottom:30px;border:0;background:#f0f0f0;border-radius:4px}input:focus,input:hover{background:#f0f0f0;border:0;outline:0}.button{height:40px;text-align:center;border-radius:40px;background:#f3f3f3;border:0;text-shadow:0;font-size:12px;font-weight:700;cursor:pointer}.button:hover{color:#333;background:#e6e6e6}.success_operation,.success_operation:hover{color:#fff;background:#88ff8e;box-shadow:1px 4px 8px 1px #00ff0033,1px 6px 20px 1px #00ff0030}.start{margin-left:calc(50% - 15px);width:40px;font-size:0;animation:2s linear .25s infinite rotating;cursor:default}.failed_operation,.success_operation{border:0;font-size:13px}.failed_operation,.failed_operation:hover{box-shadow:1px 4px 8px 1px #ff000033,1px 6px 20px 1px #ff000030;color:#fff;background:#f88}.success_operation:after{content:"\2713"}.failed_operation:after{content:"\2718"}@keyframes rotating{from{transform:rotate(0)}to{transform:rotate(360deg)}}</style></body></html>
+
+-->

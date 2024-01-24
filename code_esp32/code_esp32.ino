@@ -17,6 +17,9 @@
 #include <ESPmDNS.h>
 #include "soc/timer_group_struct.h"
 #include "soc/timer_group_reg.h"
+#include <TelnetStream.h>
+#include "Debug.h"
+#include "data.h"
 
 typedef enum {
 
@@ -94,6 +97,7 @@ ST_boton P1 = p_check, P2 = p_check;
 ST_wifi wifi = check;
 ST_buzzer buzzer = buzzer_stb;
 ST_menu menu = menu_stb;
+Debug debug;
 
 char ssid[50];
 char password[50];
@@ -123,6 +127,7 @@ int tem_amb_int, temperature = 0;
 char tem[200];
 char alar[200];
 char hora[20];
+char buffer[512];
 uint16_t speedDisplay = 50, index_timer;
 struct tm timeinfo;
 int h = 0, m = 0, s = 0, mo = 0;
@@ -138,30 +143,6 @@ uint8_t degC[] = { 6, 3, 3, 56, 68, 68, 68 };         //caracter °c
 uint8_t alarm_yes[] = { 5, 0, 60, 20, 60, 0 };        // caracter alarma on
 uint8_t alarm_no[] = { 5, 255, 195, 235, 195, 255 };  // caracter alarma off
 
-String mensaje = "";
-
-//-----------CODIGO HTML PAGINA DE CONFIGURACION---------------
-String pagina = "<!DOCTYPE html>"
-                "<html>"
-                "<head>"
-                "<title>Set YourClock WiFi</title>"
-                "<meta charset='UTF-8'>"
-                "</head>"
-                "<body>"
-                "</form>"
-                "<form action='guardar_conf' method='get'>"
-                "SSID:"
-                "<input class='input1' name='ssid' type='text'><br>"
-                "PASSWORD:"
-                "<input class='input1' name='pass' type='password'><br><br>"
-                "<input class='boton' type='submit' value='GUARDAR Y REINICIAR'/><br><br>"
-                "</form>"
-                "<a href='cancelar_conf'><button class='boton'>CANCELAR</button></a><br><br>"
-                "<a href='escanear'><button class='boton'>ESCANEAR</button></a><br>";
-
-String paginafin = "</body>"
-                   "</html>";
-
 TaskHandle_t Task1;
 TaskHandle_t Task2;
 TaskHandle_t Task3;
@@ -174,13 +155,7 @@ OneWire OneWireObject(SENSOR);
 DallasTemperature sensorDS18B20(&OneWireObject);
 String serie2;
 HTTPClient http3;
-StaticJsonDocument<1000> doc3;
-String serie;
-HTTPClient http2;
-StaticJsonDocument<1000> doc2;
-String serie3;
-HTTPClient http4;
-StaticJsonDocument<1000> doc4;
+StaticJsonDocument<32> doc3;
 
 void loop1(void *parameter);
 void loop2(void *parameter);
@@ -200,9 +175,10 @@ int controlAlarma(String hora_alarma);
 void modoconf();
 String leer(int addr);
 void grabar(int addr, String a);
-void paginaconf();
-void escanear();
-void cancelar_conf();
+void mainPage();
+void saveWifi();
+void scanWifi();
+void restart();
 
 void setup() {
 
@@ -212,6 +188,9 @@ void setup() {
   //pinMode(FULL_CHARGE, INPUT);
   //pinMode(CHARGING, INPUT);
   pinMode(2, OUTPUT);
+
+  //disableCore0WDT();
+  disableCore1WDT();
 
   matrixLed.begin();
   matrixLed.setIntensity(0);
@@ -247,14 +226,13 @@ void setup() {
   xTaskCreatePinnedToCore(loop3, "Task_3", 5120, NULL, 1, &Task3, 0);
 
   ArduinoOTA.begin();
-
-  Serial.printf("Memoria libre: %u bytes \n", ESP.getFreeSketchSpace());
+  TelnetStream.begin();
 }
 
 void loop() {
-  Tiempo_timer();  //timers
+  Tiempo_timer();
 
-  digitalClockDisplay();  //conteo reloj interno
+  digitalClockDisplay();
   process_boton1();
   process_boton2();
   process_print();
@@ -311,21 +289,21 @@ void Tiempo_timer() {
 void conectarWifi() {
 
   WiFi.begin(ssid, password);
-  Serial.print("Conecting to: ");
-  Serial.println(ssid);
+  debug.print("Conecting to: ");
+  debug.println(ssid);
 
   while (WiFi.status() != WL_CONNECTED) {
 
-    Serial.print(".");
+    debug.print(".");
     delay(1000);
     espera_wifi++;
     if (espera_wifi == 60) {
       break;
     }
   }
-  Serial.println(F("WiFi connected"));
-  Serial.print(F("IP address: "));
-  Serial.println(WiFi.localIP());
+  debug.println(F("WiFi connected"));
+  debug.print(F("IP address: "));
+  debug.println(WiFi.localIP());
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 }
 
@@ -333,7 +311,7 @@ void digitalClockDisplay() {
   if (menu == menu_stb) {
     if (timer2.isReady()) {
       s = s + 1;
-      if (s == 59) {
+      if (s == 60) {
         m = m + 1;
         s = 0;
       }
@@ -360,13 +338,13 @@ void process_requestHour() {
       break;
     case request:
       if (timers[T_RequestHour] == 0) {
-        Serial.println(getLocalTime(&timeinfo));
+        debug.println(getLocalTime(&timeinfo));
         if (!getLocalTime(&timeinfo)) {
-          Serial.println("Error al sincronizar la hora");
+          debug.println("Error al sincronizar la hora");
           return;
         }
-        Serial.print("Hora sincronizada exitosamente: ");
-        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+        debug.print("Hora sincronizada exitosamente: ");
+        debug.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
         h = timeinfo.tm_hour;
         m = timeinfo.tm_min;
         s = timeinfo.tm_sec;
@@ -391,7 +369,7 @@ void process_requestWeather() {
           int httpCode = http.GET();
           if (httpCode > 0) {
             String payloads = http.getString();
-            StaticJsonDocument<1000> doc;
+            StaticJsonDocument<1024> doc;
             deserializeJson(doc, payloads);
             const char *clima = doc["weather"][0]["main"];
             temperature = doc["main"]["temp"];
@@ -493,7 +471,7 @@ void process_boton1() {
       if (val == 1) {
         timers[T_B1] = 2500;
         P1 = p_push;
-        Serial.println("1 pulsado");
+        debug.println("1 pulsado");
       }
       break;
     case p_time:
@@ -528,7 +506,7 @@ void process_boton1() {
         ledcWriteTone(0, 4000);
         delay(750);
         ledcWriteTone(0, 0);
-        Serial.println("Ingresando al modo de configuracion de red wifi");
+        debug.println("Ingresando al modo de configuracion de red wifi");
         modoconf();
       }
       break;
@@ -542,7 +520,7 @@ void process_boton2() {
       if (val2 == 1) {
         timers[T_B2] = 2500;
         P2 = p_push;
-        Serial.println("2 pulsado");
+        debug.println("2 pulsado");
       }
       break;
     case p_time:
@@ -577,7 +555,7 @@ void process_boton2() {
         ledcWriteTone(0, 4000);
         delay(750);
         ledcWriteTone(0, 0);
-        Serial.println("Ingresando al modo de configuracion de red wifi");
+        debug.println("Ingresando al modo de configuracion de red wifi");
         modoconf();
       }
       break;
@@ -594,7 +572,7 @@ void process_reconnect() {
       if (timers[T_Reconect] == 0) {
         if (WiFi.status() == WL_CONNECTED) {
           wifi = conect;
-          Serial.println("Wifi conectado");
+          debug.println("Wifi conectado");
         } else {
           wifi = reconect;
         }
@@ -603,12 +581,12 @@ void process_reconnect() {
     case check:
       if (WiFi.status() == WL_DISCONNECTED) {
         wifi = reconect;
-        Serial.println("WiFi desconectado");
+        debug.println("WiFi desconectado");
       }
       break;
     case reconect:
       WiFi.begin(ssid, password);
-      Serial.println("Reconectando...");
+      debug.println("Reconectando...");
       timers[T_Reconect] = 10000;
       wifi = check_reconect;
       break;
@@ -632,14 +610,15 @@ void process_sendDataTemperature() {
 
           serializeJson(doc3, serie2);
 
-          Serial.println("Datos a enviar: " + serie2);
-          int code = http3.POST(serie2);
+          debug.println("Datos a enviar: " + serie2);
+          int code_res = http3.POST(serie2);
           String payload = http3.getString();
-          if (code > 0) {
-            Serial.printf("Respuesta del servidor: %i - %s \n", code, payload);
+          if (code_res > 0) {
+            debug.print("Respuesta del servidor: ");
           } else {
-            Serial.printf("Error al enviar la data: %i - %s \n", code, payload);
+            debug.print("Error al enviar la data: ");
           }
+          debug.println(code_res+" - "+payload);
           http3.end();
         }
         ambiente = stb;
@@ -728,21 +707,23 @@ void modoconf() {
 
   WiFi.softAP(ssidConf, passConf);
   IPAddress myIP = WiFi.softAPIP();
-  Serial.print("IP del access point: ");
-  Serial.println(myIP);
-  Serial.println("WebServer iniciado");
+  debug.print("IP del access point: ");
+  debug.println(myIP);
+  debug.println("WebServer iniciado");
   if (!MDNS.begin("yourclock")) {
-    Serial.println("Error iniciando mDNS");
+    debug.println("Error iniciando mDNS");
   }
-  Serial.println("mDNS iniciado");
+  debug.println("mDNS iniciado");
   //matrixLed.displayText("Ingresa a http://" + myIP, PA_CENTER, 30, 100, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
   //matrixLed.displayAnimate();
-  server.on("/", paginaconf);                  //esta es la pagina de configuracion
-  server.on("/guardar_conf", guardar_conf);    //Graba en la eeprom la configuracion y reinicia el ESP32
-  server.on("/escanear", escanear);            //Escanean las redes wifi disponibles
-  server.on("/cancelar_conf", cancelar_conf);  //Cancela y reinicia el ESP32
+  server.on("/", mainPage);
+  server.on("/save", saveWifi);
+  server.on("/scan", scanWifi);
+  server.on("/restart", restart);
+  server.onNotFound(notFound);
   server.begin();
-  Serial.println("Server iniciado");
+  debug.println("Server iniciado");
+  Page_set_Wifi.replace("%ip", myIP.toString());
   while (true) {
     //matrixLed.displayAnimate();
     server.handleClient();
@@ -774,44 +755,55 @@ void grabar(int addr, String a) {
   EEPROM.commit();
 }
 
-void escanear() {
-  int n = WiFi.scanNetworks();  //devuelve el número de redes encontradas
-  Serial.println("escaneo terminado");
-  if (n == 0) {  //si no encuentra ninguna red
-    Serial.println("no se encontraron redes");
-    mensaje = "no se encontraron redes";
+void scanWifi() {
+  int n = WiFi.scanNetworks();
+  debug.println("Escaneo terminado");
+  if (n == 0) {
+    debug.println("No se encontraron redes");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(204, "text/plain", "No se encontraron redes");
   } else {
-    Serial.print(n);
-    Serial.println(" redes encontradas");
-    mensaje = "";
+    debug.print(n);
+    debug.println(" redes encontradas");
+    StaticJsonDocument<512> wifiNetworksDoc;
+    JsonObject wifiNetworksJson = wifiNetworksDoc.to<JsonObject>();
+    JsonArray wifiNetworksArray = wifiNetworksJson.createNestedArray("networks");
     for (int i = 0; i < n; ++i) {
-      // agrega al STRING "mensaje" la información de las redes encontradas
-      mensaje = (mensaje) + "<p>" + String(i + 1) + ": " + WiFi.SSID(i) + " (" + WiFi.RSSI(i) + ") Ch: " + WiFi.channel(i) + " Enc: " + WiFi.encryptionType(i) + " </p>\r\n";
-      //WiFi.encryptionType 5:WEP 2:WPA/PSK 4:WPA2/PSK 7:open network 8:WPA/WPA2/PSK
+      wifiNetworksArray.add(WiFi.SSID(i) + " (" + WiFi.RSSI(i) + ") Ch: " + WiFi.channel(i) + " Enc: " + WiFi.encryptionType(i));
       delay(10);
     }
-    Serial.println(mensaje);
-    paginaconf();
+    serializeJson(wifiNetworksJson, buffer);
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", buffer);
   }
 }
 
-void paginaconf() {
-  server.send(200, "text/html", pagina + mensaje + paginafin);
+void mainPage() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/html", Page_set_Wifi);
 }
 
-void guardar_conf() {
-
-  Serial.println(server.arg("ssid"));  //Recibimos los valores que envia por GET el formulario web
+void saveWifi() {
+  debug.println(server.arg("ssid"));
   grabar(0, server.arg("ssid"));
-  Serial.println(server.arg("pass"));
+  debug.println(server.arg("pass"));
   grabar(50, server.arg("pass"));
 
-  mensaje = "Configuracion Guardada, reiniciando el reloj...";
-  paginaconf();
-  delay(1000);
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", "Configuracion Guardada");
+
+}
+
+void restart() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "text/plain", "Reiniciando el reloj");
+  delay(500);
   ESP.restart();
 }
 
-void cancelar_conf() {
-  ESP.restart();
+void notFound() {
+  String mensaje = "<h1>404</h1>";
+  mensaje += "Pagina No encontrada</br>";
+  mensaje += "Intenta otra pagina</br>";
+  server.send(404, "text/html", mensaje);
 }
